@@ -21,13 +21,25 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
-import android.support.design.widget.Snackbar;
-import android.support.v4.app.ActivityCompat;
-import android.support.v7.app.AppCompatActivity;
+import android.provider.Settings;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
+import com.google.android.material.snackbar.Snackbar;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -38,24 +50,33 @@ import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
 import com.google.android.gms.samples.vision.face.facetracker.ui.camera.CameraSourcePreview;
 import com.google.android.gms.samples.vision.face.facetracker.ui.camera.GraphicOverlay;
+import com.vikramezhil.droidspeech.DroidSpeech;
+import com.vikramezhil.droidspeech.OnDSListener;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 
 /**
  * Activity for the face tracker app.  This app detects faces with the rear facing camera, and draws
  * overlay graphics to indicate the position, size, and ID of each face.
  */
-public final class FaceTrackerActivity extends AppCompatActivity {
+public final class FaceTrackerActivity extends AppCompatActivity implements OnDSListener {
     private static final String TAG = "FaceTracker";
+    private static final int REQUEST_CODE_SPEECH_INPUT = 1000;
 
     private CameraSource mCameraSource = null;
 
     private CameraSourcePreview mPreview;
     private GraphicOverlay mGraphicOverlay;
+    private TextView outputText;
 
     private static final int RC_HANDLE_GMS = 9001;
     // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
+
+    private SpeechRecognizer recognizer;
 
     //==============================================================================================
     // Activity Methods
@@ -71,6 +92,15 @@ public final class FaceTrackerActivity extends AppCompatActivity {
 
         mPreview = (CameraSourcePreview) findViewById(R.id.preview);
         mGraphicOverlay = (GraphicOverlay) findViewById(R.id.faceOverlay);
+        outputText = (TextView) findViewById(R.id.OutputText);
+        outputText.bringToFront();
+
+        checkVoiceCommandPermissions();
+
+        DroidSpeech droidSpeech = new DroidSpeech(this, getFragmentManager());
+        droidSpeech.setOnDroidSpeechListener(this);
+        droidSpeech.setContinuousSpeechRecognition(true);
+        droidSpeech.startDroidSpeechRecognition();
 
         // Check for the camera permission before accessing the camera.  If the
         // permission is not granted yet, request permission.
@@ -79,6 +109,17 @@ public final class FaceTrackerActivity extends AppCompatActivity {
             createCameraSource();
         } else {
             requestCameraPermission();
+        }
+
+
+    }
+
+    private void checkVoiceCommandPermissions(){
+        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+            if(!(ContextCompat.checkSelfPermission(FaceTrackerActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)){
+                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            }
         }
     }
 
@@ -256,6 +297,36 @@ public final class FaceTrackerActivity extends AppCompatActivity {
                 mCameraSource = null;
             }
         }
+    }
+
+    @Override
+    public void onDroidSpeechSupportedLanguages(String currentSpeechLanguage, List<String> supportedSpeechLanguages) {
+
+    }
+
+    @Override
+    public void onDroidSpeechRmsChanged(float rmsChangedValue) {
+
+    }
+
+    @Override
+    public void onDroidSpeechLiveResult(String liveSpeechResult) {
+        outputText.setText(liveSpeechResult);
+    }
+
+    @Override
+    public void onDroidSpeechFinalResult(String finalSpeechResult) {
+        Log.d("Test", "test");
+    }
+
+    @Override
+    public void onDroidSpeechClosedByUser() {
+
+    }
+
+    @Override
+    public void onDroidSpeechError(String errorMsg) {
+        outputText.setText(errorMsg);
     }
 
     //==============================================================================================
