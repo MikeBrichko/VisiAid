@@ -17,13 +17,6 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <TextView
-        android:id="@+id/OutputText"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Text is here"
-        android:translationZ="@android:dimen/app_icon_size"></TextView>
-
   </com.google.android.gms.samples.vision.face.facetracker.ui.camera.CameraSourcePreview>
 
 </RelativeLayout>

@@ -17,34 +17,33 @@ package com.google.android.gms.samples.vision.face.facetracker;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
-import com.google.android.material.snackbar.Snackbar;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
+import com.google.android.gms.samples.vision.face.facetracker.ui.camera.CameraSourcePreview;
+import com.google.android.gms.samples.vision.face.facetracker.ui.camera.GraphicOverlay;
 import com.google.android.gms.vision.CameraSource;
 import com.google.android.gms.vision.MultiProcessor;
 import com.google.android.gms.vision.Tracker;
 import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
-import com.google.android.gms.samples.vision.face.facetracker.ui.camera.CameraSourcePreview;
-import com.google.android.gms.samples.vision.face.facetracker.ui.camera.GraphicOverlay;
+import com.google.android.material.snackbar.Snackbar;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -54,7 +53,7 @@ import java.util.ArrayList;
  * overlay graphics to indicate the position, size, and ID of each face.
  */
 public final class FaceTrackerActivity extends AppCompatActivity implements
-        RecognitionListener {
+        RecognitionListener, Subject {
     private static final String TAG = "FaceTracker";
     private CameraSource mCameraSource = null;
     private CameraSourcePreview mPreview;
@@ -68,6 +67,8 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
     private SpeechRecognizer speech = null;
     private Intent recognizerIntent;
     private String LOG_TAG = "VoiceRecognitionActivity";
+
+    public ArrayList<Observer> observers;
 
     //==============================================================================================
     // Activity Methods
@@ -103,7 +104,7 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
 
         mPreview = (CameraSourcePreview) findViewById(R.id.preview);
         mGraphicOverlay = (GraphicOverlay) findViewById(R.id.faceOverlay);
-        returnedText = findViewById(R.id.OutputText);
+        observers = new ArrayList<>();
 
         // start speech recogniser
         resetSpeechRecognizer();
@@ -190,7 +191,7 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
 
         mCameraSource = new CameraSource.Builder(context, detector)
                 .setRequestedPreviewSize(640, 480)
-                .setFacing(CameraSource.CAMERA_FACING_BACK)
+                .setFacing(CameraSource.CAMERA_FACING_FRONT)
                 .setRequestedFps(30.0f)
                 .build();
     }
@@ -352,7 +353,7 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
         ArrayList<String> matches = results
                 .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
 
-        returnedText.setText(matches.get(0));
+        update(matches.get(0));
         speech.startListening(recognizerIntent);
     }
 
@@ -403,6 +404,23 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
         return message;
     }
 
+    @Override
+    public void addObserver(Observer obj) {
+        observers.add(obj);
+    }
+
+    @Override
+    public void removeObserver(Observer obj) {
+        observers.remove(obj);
+    }
+
+    @Override
+    public void update(String s) {
+        for(Observer obj : observers){
+            obj.update(s);
+        }
+    }
+
     //==============================================================================================
     // Graphic Face Tracker
     //==============================================================================================
@@ -430,6 +448,7 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
         GraphicFaceTracker(GraphicOverlay overlay) {
             mOverlay = overlay;
             mFaceGraphic = new FaceGraphic(overlay);
+            addObserver(mFaceGraphic);
         }
 
         public void setText(String t){
