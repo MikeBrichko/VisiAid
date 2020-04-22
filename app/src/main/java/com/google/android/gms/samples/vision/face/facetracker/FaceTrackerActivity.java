@@ -62,8 +62,6 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
     private static final int RC_HANDLE_CAMERA_PERM = 2;
 
     private static final int PERMISSIONS_REQUEST_RECORD_AUDIO = 1;
-    private TextView returnedText;
-    private String returnedError;
     private SpeechRecognizer speech = null;
     private Intent recognizerIntent;
     private String LOG_TAG = "VoiceRecognitionActivity";
@@ -340,7 +338,6 @@ public final class FaceTrackerActivity extends AppCompatActivity implements
     public void onError(int errorCode) {
         String errorMessage = getErrorText(errorCode);
         Log.i(LOG_TAG, "FAILED " + errorMessage);
-        returnedError = errorMessage;
 
         // rest voice recogniser
         resetSpeechRecognizer();
