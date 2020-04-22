@@ -23,10 +23,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -35,9 +32,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.appcompat.app.AppCompatActivity;
 import android.util.Log;
-import android.view.MotionEvent;
 import android.view.View;
-import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -50,37 +45,53 @@ import com.google.android.gms.vision.face.Face;
 import com.google.android.gms.vision.face.FaceDetector;
 import com.google.android.gms.samples.vision.face.facetracker.ui.camera.CameraSourcePreview;
 import com.google.android.gms.samples.vision.face.facetracker.ui.camera.GraphicOverlay;
-import com.vikramezhil.droidspeech.DroidSpeech;
-import com.vikramezhil.droidspeech.OnDSListener;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
 
 /**
  * Activity for the face tracker app.  This app detects faces with the rear facing camera, and draws
  * overlay graphics to indicate the position, size, and ID of each face.
  */
-public final class FaceTrackerActivity extends AppCompatActivity implements OnDSListener {
+public final class FaceTrackerActivity extends AppCompatActivity implements
+        RecognitionListener {
     private static final String TAG = "FaceTracker";
-    private static final int REQUEST_CODE_SPEECH_INPUT = 1000;
-
     private CameraSource mCameraSource = null;
-
     private CameraSourcePreview mPreview;
     private GraphicOverlay mGraphicOverlay;
-    private TextView outputText;
-
     private static final int RC_HANDLE_GMS = 9001;
-    // permission request codes need to be < 256
     private static final int RC_HANDLE_CAMERA_PERM = 2;
 
-    private SpeechRecognizer recognizer;
+    private static final int PERMISSIONS_REQUEST_RECORD_AUDIO = 1;
+    private TextView returnedText;
+    private String returnedError;
+    private SpeechRecognizer speech = null;
+    private Intent recognizerIntent;
+    private String LOG_TAG = "VoiceRecognitionActivity";
 
     //==============================================================================================
     // Activity Methods
     //==============================================================================================
+
+    private void resetSpeechRecognizer() {
+        if(speech != null)
+            speech.destroy();
+        speech = SpeechRecognizer.createSpeechRecognizer(this);
+        Log.i(LOG_TAG, "isRecognitionAvailable: " + SpeechRecognizer.isRecognitionAvailable(this));
+        if(SpeechRecognizer.isRecognitionAvailable(this))
+            speech.setRecognitionListener(this);
+        else
+            finish();
+    }
+
+    private void setRecogniserIntent() {
+        recognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE,
+                "en");
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        recognizerIntent.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
+    }
 
     /**
      * Initializes the UI and initiates the creation of a face detector.
@@ -92,15 +103,10 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
 
         mPreview = (CameraSourcePreview) findViewById(R.id.preview);
         mGraphicOverlay = (GraphicOverlay) findViewById(R.id.faceOverlay);
-        outputText = (TextView) findViewById(R.id.OutputText);
-        outputText.bringToFront();
+        returnedText = findViewById(R.id.OutputText);
 
-        checkVoiceCommandPermissions();
-
-        DroidSpeech droidSpeech = new DroidSpeech(this, getFragmentManager());
-        droidSpeech.setOnDroidSpeechListener(this);
-        droidSpeech.setContinuousSpeechRecognition(true);
-        droidSpeech.startDroidSpeechRecognition();
+        // start speech recogniser
+        resetSpeechRecognizer();
 
         // Check for the camera permission before accessing the camera.  If the
         // permission is not granted yet, request permission.
@@ -111,17 +117,16 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
             requestCameraPermission();
         }
 
-
-    }
-
-    private void checkVoiceCommandPermissions(){
-        if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
-            if(!(ContextCompat.checkSelfPermission(FaceTrackerActivity.this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED)){
-                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName()));
-                startActivity(intent);
-            }
+        int permissionCheck = ContextCompat.checkSelfPermission(getApplicationContext(), Manifest.permission.RECORD_AUDIO);
+        if (permissionCheck != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, PERMISSIONS_REQUEST_RECORD_AUDIO);
+            return;
         }
+
+        setRecogniserIntent();
+        speech.startListening(recognizerIntent);
     }
+
 
     /**
      * Handles the requesting of the camera permission.  This includes
@@ -196,8 +201,9 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
     @Override
     protected void onResume() {
         super.onResume();
-
         startCameraSource();
+        resetSpeechRecognizer();
+        speech.startListening(recognizerIntent);
     }
 
     /**
@@ -206,6 +212,7 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
     @Override
     protected void onPause() {
         super.onPause();
+        speech.stopListening();
         mPreview.stop();
     }
 
@@ -218,6 +225,15 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
         super.onDestroy();
         if (mCameraSource != null) {
             mCameraSource.release();
+        }
+    }
+
+    @Override
+    protected  void onStop(){
+        Log.i(LOG_TAG, "stop");
+        super.onStop();
+        if (speech != null) {
+            speech.destroy();
         }
     }
 
@@ -239,33 +255,27 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
      */
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+
+        if (requestCode == PERMISSIONS_REQUEST_RECORD_AUDIO) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                speech.startListening(recognizerIntent);
+            } else {
+                Toast.makeText(FaceTrackerActivity.this, "Permission Denied!", Toast
+                        .LENGTH_SHORT).show();
+            }
+        }
+
         if (requestCode != RC_HANDLE_CAMERA_PERM) {
             Log.d(TAG, "Got unexpected permission result: " + requestCode);
             super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-            return;
         }
 
         if (grantResults.length != 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             Log.d(TAG, "Camera permission granted - initialize the camera source");
             // we have permission, so create the camerasource
             createCameraSource();
-            return;
         }
-
-        Log.e(TAG, "Permission not granted: results len = " + grantResults.length +
-                " Result code = " + (grantResults.length > 0 ? grantResults[0] : "(empty)"));
-
-        DialogInterface.OnClickListener listener = new DialogInterface.OnClickListener() {
-            public void onClick(DialogInterface dialog, int id) {
-                finish();
-            }
-        };
-
-        AlertDialog.Builder builder = new AlertDialog.Builder(this);
-        builder.setTitle("Face Tracker sample")
-                .setMessage(R.string.no_camera_permission)
-                .setPositiveButton(R.string.ok, listener)
-                .show();
     }
 
     //==============================================================================================
@@ -300,33 +310,97 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
     }
 
     @Override
-    public void onDroidSpeechSupportedLanguages(String currentSpeechLanguage, List<String> supportedSpeechLanguages) {
-
+    public void onReadyForSpeech(Bundle params) {
+        Log.i(LOG_TAG, "onReadyForSpeech");
     }
 
     @Override
-    public void onDroidSpeechRmsChanged(float rmsChangedValue) {
-
+    public void onBeginningOfSpeech() {
+        Log.i(LOG_TAG, "onBeginningOfSpeech");
     }
 
     @Override
-    public void onDroidSpeechLiveResult(String liveSpeechResult) {
-        outputText.setText(liveSpeechResult);
+    public void onRmsChanged(float rmsdB) {
+        Log.i(LOG_TAG, "onRmsChanged: " + rmsdB);
     }
 
     @Override
-    public void onDroidSpeechFinalResult(String finalSpeechResult) {
-        Log.d("Test", "test");
+    public void onBufferReceived(byte[] buffer) {
+        Log.i(LOG_TAG, "onBufferReceived: " + buffer);
     }
 
     @Override
-    public void onDroidSpeechClosedByUser() {
-
+    public void onEndOfSpeech() {
+        Log.i(LOG_TAG, "onEndOfSpeech");
+        speech.stopListening();
     }
 
     @Override
-    public void onDroidSpeechError(String errorMsg) {
-        outputText.setText(errorMsg);
+    public void onError(int errorCode) {
+        String errorMessage = getErrorText(errorCode);
+        Log.i(LOG_TAG, "FAILED " + errorMessage);
+        returnedError = errorMessage;
+
+        // rest voice recogniser
+        resetSpeechRecognizer();
+        speech.startListening(recognizerIntent);
+    }
+
+    @Override
+    public void onResults(Bundle results) {
+        Log.i(LOG_TAG, "onResults");
+        ArrayList<String> matches = results
+                .getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+
+        returnedText.setText(matches.get(0));
+        speech.startListening(recognizerIntent);
+    }
+
+    @Override
+    public void onPartialResults(Bundle partialResults) {
+        Log.i(LOG_TAG, "onPartialResults");
+    }
+
+    @Override
+    public void onEvent(int eventType, Bundle params) {
+        Log.i(LOG_TAG, "onEvent");
+    }
+
+    public String getErrorText(int errorCode) {
+        String message;
+        switch (errorCode) {
+            case SpeechRecognizer.ERROR_AUDIO:
+                message = "Audio recording error";
+                break;
+            case SpeechRecognizer.ERROR_CLIENT:
+                message = "Client side error";
+                break;
+            case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                message = "Insufficient permissions";
+                break;
+            case SpeechRecognizer.ERROR_NETWORK:
+                message = "Network error";
+                break;
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT:
+                message = "Network timeout";
+                break;
+            case SpeechRecognizer.ERROR_NO_MATCH:
+                message = "No match";
+                break;
+            case SpeechRecognizer.ERROR_RECOGNIZER_BUSY:
+                message = "RecognitionService busy";
+                break;
+            case SpeechRecognizer.ERROR_SERVER:
+                message = "error from server";
+                break;
+            case SpeechRecognizer.ERROR_SPEECH_TIMEOUT:
+                message = "No speech input";
+                break;
+            default:
+                message = "Didn't understand, please try again.";
+                break;
+        }
+        return message;
     }
 
     //==============================================================================================
@@ -351,10 +425,15 @@ public final class FaceTrackerActivity extends AppCompatActivity implements OnDS
     private class GraphicFaceTracker extends Tracker<Face> {
         private GraphicOverlay mOverlay;
         private FaceGraphic mFaceGraphic;
+        private String text;
 
         GraphicFaceTracker(GraphicOverlay overlay) {
             mOverlay = overlay;
             mFaceGraphic = new FaceGraphic(overlay);
+        }
+
+        public void setText(String t){
+            text = t;
         }
 
         /**
